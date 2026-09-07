@@ -1,0 +1,5916 @@
+
+/* ============================================================
+   PROCESO SEGUIMIENTO AGENCIAS
+   Fecha ejecución : 2026-09-01 12:24:36
+   Periodo         : 202608
+   Tabla cierre    : maesaldos_260831
+============================================================ */
+
+/* ============================================================
+   SQL_1 - FUGA PLAZO
+============================================================ */
+
+
+delete from pla_base_seguimiento_agencias_plazo_1
+where periodo='202608';
+
+insert into pla_base_seguimiento_agencias_plazo_1
+
+select
+'202608' periodo,
+(case when a.codigoclientebanco is not null then a.codigoclientebanco else b.codcli_cancelado end) codigoclientebanco,
+(case when a.codigoclientebanco is not null then 1 else 0 end) c_vence,
+(case when b.codcli_cancelado is not null then 1 else 0 end) c_cancelado,
+(case when b.codcli_aperturado is not null then 1 else 0 end) c_aperturado,
+(case when a.codigoclientebanco is not null then saldo_x_vencer else 0 end) s_vence,
+(case when b.codcli_cancelado is not null then saldo_cancelado else 0 end) s_cancelado,
+(case when b.codcli_aperturado is not null then saldo_aperturado else 0 end) s_aperturado
+
+from
+(
+    select
+        codigoclientebanco,
+        sum(saldoactual * tipocambio) saldo_x_vencer
+    from maesaldos_260731
+    where producto like 'plazo%'
+      and SubProducto <> 'CTS'
+      and flagstk > 0
+      and format(fechavencimientooriginal,'yyyyMM') = '202608'
+    group by codigoclientebanco
+) a
+
+full join
+(
+    select
+        aa.codigoclientebanco codcli_cancelado,
+        saldo_cancelado,
+        bb.codigoclientebanco codcli_aperturado,
+        saldo_aperturado
+    from
+    (
+        select
+            codigoclientebanco,
+            sum(saldocancelacion * tipocambio) saldo_cancelado
+        from maesaldos_260831
+        where producto like 'plazo%'
+          and SubProducto <> 'CTS'
+          and format(fechacancelacion,'yyyyMM') = '202608'
+          and format(fechacancelacion,'yyyyMM') <> format(fechaaperturaoriginal,'yyyyMM')
+        group by codigoclientebanco
+    ) aa
+
+    left join
+
+    (
+        select
+            codigoclientebanco,
+            sum(saldoactual * tipocambio) saldo_aperturado
+        from maesaldos_260831
+        where producto like 'plazo%'
+          and SubProducto <> 'CTS'
+          and flagstk > 0
+          and format(fechaaperturaoriginal,'yyyyMM') = '202608'
+        group by codigoclientebanco
+    ) bb
+    on aa.codigoclientebanco = bb.codigoclientebanco
+) b
+on a.codigoclientebanco = b.codcli_cancelado;
+
+
+/* ============================================================
+   SQL_2 - BASE PASIVOS
+============================================================ */
+
+
+IF OBJECT_ID('tempdb..#temp1', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE #temp1
+END
+
+select
+    y.periodo_corte,
+    y.agencia,
+    x.periodo,
+    x.numerooperacion,
+    x.codigoclientebanco,
+    x.moneda,
+    x.producto,
+    x.saldoactual,
+    x.Tasa_x_Saldo_Actual,
+    x.saldo_solarizado,
+    x.Tasa_x_Saldo_Solarizado,
+    x.periodo_venta
+into #temp1
+from
+(
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_240930 a
+inner join
+(
+    select *
+    from segmento_banco_240930
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_241031 a
+inner join
+(
+    select *
+    from segmento_banco_241031
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_241130 a
+inner join
+(
+    select *
+    from segmento_banco_241130
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    (case when moneda='PEN' then 'NUEVO SOL'
+          else 'US DOLLAR' end) moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from mc_pasivos_2412 a
+inner join
+(
+    select *
+    from segmento_banco_241231
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where ((producto like 'plazo%' and subproducto<>'CTS')
+   or (codigoproductoibs not in ('AHDS','AHDD')
+       and CodigoTipoProductoIBS='AHNA'))
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250131 a
+inner join
+(
+    select *
+    from segmento_banco_250131
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250228 a
+inner join
+(
+    select *
+    from segmento_banco_250228
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250331 a
+inner join
+(
+    select *
+    from segmento_banco_250331
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250430 a
+inner join
+(
+    select *
+    from segmento_banco_250430
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250531 a
+inner join
+(
+    select *
+    from segmento_banco_250531
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250630 a
+inner join
+(
+    select *
+    from segmento_banco_250630
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250731 a
+inner join
+(
+    select *
+    from segmento_banco_250731
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250831 a
+inner join
+(
+    select *
+    from segmento_banco_250831
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_250930 a
+inner join
+(
+    select *
+    from segmento_banco_250930
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_251031 a
+inner join
+(
+    select *
+    from segmento_banco_251031
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_251130 a
+inner join
+(
+    select *
+    from segmento_banco_251130
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_251231 a
+inner join
+(
+    select *
+    from segmento_banco_251231
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260131 a
+inner join
+(
+    select *
+    from segmento_banco_260131
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260228 a
+inner join
+(
+    select *
+    from segmento_banco_260228
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260331 a
+inner join
+(
+    select *
+    from segmento_banco_260331
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260430 a
+inner join
+(
+    select *
+    from segmento_banco_260430
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260531 a
+inner join
+(
+    select *
+    from segmento_banco_260531
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260630 a
+inner join
+(
+    select *
+    from segmento_banco_260630
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260731 a
+inner join
+(
+    select *
+    from segmento_banco_260731
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+union all
+
+(
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.numerooperacion,
+    a.codigoclientebanco,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    saldoactual*TasaInteres Tasa_x_Saldo_Actual,
+    saldoactual*TasaInteres*TipoCambio Tasa_x_Saldo_Solarizado,
+    (case when (producto like 'plazo%' and subproducto<>'CTS')
+          then 'PLAZO'
+          else 'AHORROS' end) producto
+from maesaldos_260831 a
+inner join
+(
+    select *
+    from segmento_banco_260831
+    where segmento in ('emprendedor','persona')
+      and tipo='activo'
+) b
+on a.codigoclientebanco=b.codigoclientebanco
+where flagstk>0
+  and (
+        (producto like 'plazo%' and subproducto<>'CTS')
+        or (
+            codigoproductoibs not in ('AHDS','AHDD')
+            and CodigoTipoProductoIBS='AHNA'
+           )
+      )
+)
+
+) x
+left join
+(
+    select
+        '202409' periodo_corte,
+        codigoclientebanco,
+        agencia
+    from maeclientes_240930
+    where tipocliente='persona natural'
+) y
+on x.codigoclientebanco=y.codigoclientebanco;
+
+
+/* ============================================================
+   SQL_3 - ASIGNACIÓN DE AGENCIAS PASIVOS
+============================================================ */
+
+
+IF OBJECT_ID('tempdb..#temp11', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE #temp11
+END
+
+SELECT
+    x.*,
+    (CASE
+        WHEN x.moneda='US DOLLAR'
+        THEN x.saldoactual*y.TipoCambio
+        ELSE x.saldoactual
+    END) saldo_solarizado_tc_prox_mes,
+
+    (CASE
+        WHEN x.moneda='US DOLLAR'
+        THEN x.saldoactual*z.TipoCambio
+        ELSE x.saldoactual
+    END) saldo_solarizado_tc_actual
+
+INTO #temp11
+
+FROM #temp1 x
+
+LEFT JOIN
+(
+    SELECT
+        FORMAT(fecha,'yyyyMM') periodo,
+        FORMAT(DATEADD(M,-1,fecha),'yyyyMM') periodo_ant,
+        tipocambio
+    FROM bi_TipoCambio
+    WHERE CodigoMoneda='USD'
+      AND (
+            EOMONTH(fecha)=fecha
+            OR FORMAT(fecha,'yyyyMMdd')
+               = FORMAT(GETDATE()-5,'yyyyMMdd')
+          )
+) y
+ON x.periodo=y.periodo_ant
+
+LEFT JOIN
+(
+    SELECT
+        FORMAT(fecha,'yyyyMM') periodo,
+        tipocambio
+    FROM bi_TipoCambio
+    WHERE CodigoMoneda='USD'
+      AND FORMAT(fecha,'yyyyMMdd')
+          = FORMAT(GETDATE()-5,'yyyyMMdd')
+) z
+ON 1=1;
+
+
+IF OBJECT_ID('tempdb..#temp2', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE #temp2
+END
+
+SELECT
+    a.*,
+
+    CASE
+        WHEN a.agencia IS NOT NULL THEN a.agencia
+
+        when a.agencia is null
+       and periodo_venta='202410'
+       and format(mae1.fechainicio,'yyyyMM')<='202410'
+      then mae1.agencia
+when a.agencia is null
+       and periodo_venta='202411'
+       and format(mae2.fechainicio,'yyyyMM')<='202411'
+      then mae2.agencia
+when a.agencia is null
+       and periodo_venta='202412'
+       and format(mae3.fechainicio,'yyyyMM')<='202412'
+      then mae3.agencia
+when a.agencia is null
+       and periodo_venta='202501'
+       and format(mae4.fechainicio,'yyyyMM')<='202501'
+      then mae4.agencia
+when a.agencia is null
+       and periodo_venta='202502'
+       and format(mae5.fechainicio,'yyyyMM')<='202502'
+      then mae5.agencia
+when a.agencia is null
+       and periodo_venta='202503'
+       and format(mae6.fechainicio,'yyyyMM')<='202503'
+      then mae6.agencia
+when a.agencia is null
+       and periodo_venta='202504'
+       and format(mae7.fechainicio,'yyyyMM')<='202504'
+      then mae7.agencia
+when a.agencia is null
+       and periodo_venta='202505'
+       and format(mae8.fechainicio,'yyyyMM')<='202505'
+      then mae8.agencia
+when a.agencia is null
+       and periodo_venta='202506'
+       and format(mae9.fechainicio,'yyyyMM')<='202506'
+      then mae9.agencia
+when a.agencia is null
+       and periodo_venta='202507'
+       and format(mae10.fechainicio,'yyyyMM')<='202507'
+      then mae10.agencia
+when a.agencia is null
+       and periodo_venta='202508'
+       and format(mae11.fechainicio,'yyyyMM')<='202508'
+      then mae11.agencia
+when a.agencia is null
+       and periodo_venta='202509'
+       and format(mae12.fechainicio,'yyyyMM')<='202509'
+      then mae12.agencia
+when a.agencia is null
+       and periodo_venta='202510'
+       and format(mae13.fechainicio,'yyyyMM')<='202510'
+      then mae13.agencia
+when a.agencia is null
+       and periodo_venta='202511'
+       and format(mae14.fechainicio,'yyyyMM')<='202511'
+      then mae14.agencia
+when a.agencia is null
+       and periodo_venta='202512'
+       and format(mae15.fechainicio,'yyyyMM')<='202512'
+      then mae15.agencia
+when a.agencia is null
+       and periodo_venta='202601'
+       and format(mae16.fechainicio,'yyyyMM')<='202601'
+      then mae16.agencia
+when a.agencia is null
+       and periodo_venta='202602'
+       and format(mae17.fechainicio,'yyyyMM')<='202602'
+      then mae17.agencia
+when a.agencia is null
+       and periodo_venta='202603'
+       and format(mae18.fechainicio,'yyyyMM')<='202603'
+      then mae18.agencia
+when a.agencia is null
+       and periodo_venta='202604'
+       and format(mae19.fechainicio,'yyyyMM')<='202604'
+      then mae19.agencia
+when a.agencia is null
+       and periodo_venta='202605'
+       and format(mae20.fechainicio,'yyyyMM')<='202605'
+      then mae20.agencia
+when a.agencia is null
+       and periodo_venta='202606'
+       and format(mae21.fechainicio,'yyyyMM')<='202606'
+      then mae21.agencia
+when a.agencia is null
+       and periodo_venta='202607'
+       and format(mae22.fechainicio,'yyyyMM')<='202607'
+      then mae22.agencia
+when a.agencia is null
+       and periodo_venta='202608'
+       and format(mae23.fechainicio,'yyyyMM')<='202608'
+      then mae23.agencia
+when a.agencia is null
+     and format(mae23.fechainicio,'yyyyMM')<='202608'
+    then mae23.agencia
+
+        ELSE NULL
+    END AS agencia_final,
+
+    CASE
+        WHEN b.CodigoClienteBanco IS NULL
+        THEN 'ventas_post'
+        ELSE 'stock'
+    END grupo_periodo_venta
+
+INTO #temp2
+
+FROM #temp11 a
+
+LEFT JOIN
+(
+    SELECT DISTINCT codigoclientebanco
+    FROM #temp11
+    WHERE periodo='202409'
+) b
+ON a.CodigoClienteBanco=b.CodigoClienteBanco
+
+left join maeclientes_241031 mae1
+    on a.codigoclientebanco = mae1.codigoclientebanco
+left join maeclientes_241130 mae2
+    on a.codigoclientebanco = mae2.codigoclientebanco
+left join maeclientes_241231 mae3
+    on a.codigoclientebanco = mae3.codigoclientebanco
+left join maeclientes_250131 mae4
+    on a.codigoclientebanco = mae4.codigoclientebanco
+left join maeclientes_250228 mae5
+    on a.codigoclientebanco = mae5.codigoclientebanco
+left join maeclientes_250331 mae6
+    on a.codigoclientebanco = mae6.codigoclientebanco
+left join maeclientes_250430 mae7
+    on a.codigoclientebanco = mae7.codigoclientebanco
+left join maeclientes_250531 mae8
+    on a.codigoclientebanco = mae8.codigoclientebanco
+left join maeclientes_250630 mae9
+    on a.codigoclientebanco = mae9.codigoclientebanco
+left join maeclientes_250731 mae10
+    on a.codigoclientebanco = mae10.codigoclientebanco
+left join maeclientes_250831 mae11
+    on a.codigoclientebanco = mae11.codigoclientebanco
+left join maeclientes_250930 mae12
+    on a.codigoclientebanco = mae12.codigoclientebanco
+left join maeclientes_251031 mae13
+    on a.codigoclientebanco = mae13.codigoclientebanco
+left join maeclientes_251130 mae14
+    on a.codigoclientebanco = mae14.codigoclientebanco
+left join maeclientes_251231 mae15
+    on a.codigoclientebanco = mae15.codigoclientebanco
+left join maeclientes_260131 mae16
+    on a.codigoclientebanco = mae16.codigoclientebanco
+left join maeclientes_260228 mae17
+    on a.codigoclientebanco = mae17.codigoclientebanco
+left join maeclientes_260331 mae18
+    on a.codigoclientebanco = mae18.codigoclientebanco
+left join maeclientes_260430 mae19
+    on a.codigoclientebanco = mae19.codigoclientebanco
+left join maeclientes_260531 mae20
+    on a.codigoclientebanco = mae20.codigoclientebanco
+left join maeclientes_260630 mae21
+    on a.codigoclientebanco = mae21.codigoclientebanco
+left join maeclientes_260731 mae22
+    on a.codigoclientebanco = mae22.codigoclientebanco
+left join maeclientes_260831 mae23
+    on a.codigoclientebanco = mae23.codigoclientebanco
+
+
+/* ============================================================
+   SQL_4 - REPORTE PASIVOS
+============================================================ */
+
+
+-- renombramos patrimonial
+
+DELETE FROM #temp2
+WHERE agencia_final IS NULL;
+
+UPDATE #temp2
+SET agencia_final='PATRIMONIAL'
+WHERE agencia_final='CARTERA DEL BCO DE PICHINCHA';
+
+----------------------------------------------------------------------------------------------
+-- corregimos agencias cerradas
+----------------------------------------------------------------------------------------------
+
+UPDATE #temp2
+SET agencia_final=b.Agencia
+FROM #temp2 a
+INNER JOIN
+(
+    SELECT *
+    FROM pla_agencias_ic
+    WHERE periodo='202608'
+      AND estado='C'
+      AND canal_agencia='AGENCIAS'
+      AND fecha_cierre<'2024-12-31'
+) x
+    ON a.agencia_final=x.agencia
+INNER JOIN maeclientes_260831 b
+    ON a.CodigoClienteBanco=b.CodigoClienteBanco;
+
+
+UPDATE #temp2
+SET agencia_final='OF. PRINCIPAL'
+FROM #temp2 a
+INNER JOIN
+(
+    SELECT *
+    FROM pla_agencias_ic
+    WHERE periodo='202608'
+      AND estado='C'
+      AND canal_agencia='AGENCIAS'
+      AND fecha_cierre<'2024-12-31'
+) x
+    ON a.agencia_final=x.agencia;
+
+
+----------------------------------------------------------------------------------------------
+-- marcamos situación actual de la agencia
+----------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS pla_base_pasivos_saldo_v2;
+
+SELECT
+    periodo,
+    moneda,
+    producto,
+    agencia_final,
+    grupo_periodo_venta,
+    zona,
+    situacion,
+    fecha_cierre,
+    codigoclientebanco,
+    NumeroOperacion,
+    SaldoActual,
+    saldo_solarizado,
+    saldo_solarizado_tc_prox_mes,
+    saldo_solarizado_tc_actual,
+    Tasa_x_Saldo_Actual,
+    Tasa_x_Saldo_Solarizado
+INTO dbo.pla_base_pasivos_saldo_v2
+FROM
+(
+    SELECT *,
+           ROW_NUMBER() OVER
+           (
+                PARTITION BY periodo,numerooperacion
+                ORDER BY periodo,numerooperacion
+           ) rn
+    FROM
+    (
+        SELECT
+            x.*,
+            zona,
+            fecha_cierre,
+            (
+                CASE
+                    WHEN fecha_cierre IS NULL THEN 'SE MANTIENE'
+                    WHEN fecha_cierre>'2025-12-31' THEN 'VA A CERRAR'
+                    WHEN fecha_cierre>='2024-12-31'
+                      OR fecha_cierre<='2025-12-31'
+                      OR categoria IS NULL THEN 'CERRADA'
+                    WHEN fecha_cierre<'2024-12-31' THEN 'CERRADA ANTES'
+                    ELSE 'OTROS'
+                END
+            ) situacion
+
+        FROM #temp2 x
+
+        LEFT JOIN
+        (
+            SELECT
+                agencia,
+                categoria,
+                zona,
+                fecha_cierre
+            FROM pla_agencias_ic
+            WHERE periodo='202608'
+              AND canal_agencia='AGENCIAS'
+              AND zona IS NOT NULL
+        ) y
+
+        ON (
+            CASE
+                WHEN x.agencia_final='AG. CARSA PUCALLPA'
+                    THEN 'AG. PUCALLPA'
+                WHEN x.agencia_final='AG. CARSA JAEN'
+                    THEN 'AG. JAEN'
+                ELSE x.agencia_final
+            END
+        )=y.agencia
+    ) w
+) x
+WHERE rn=1;
+
+-----------------------------------------------------------------------------------------
+-- zona de patrimonial y principal
+-----------------------------------------------------------------------------------------
+
+UPDATE pla_base_pasivos_saldo_v2
+SET zona='PATRIMONIAL Y OTROS'
+WHERE agencia_final IN
+(
+    'OF. PRINCIPAL',
+    'PATRIMONIAL',
+    'FIDEICOMISO II',
+    'FIDEICOMISO AG 402 PE$',
+    'AGENCIA BASADRE'
+);
+
+-----------------------------------------------------------------------------------------
+-- borrando casos raros
+-----------------------------------------------------------------------------------------
+
+DELETE FROM pla_base_pasivos_saldo_v2
+WHERE situacion='otros';
+
+-----------------------------------------------------------------------------------------
+-- Consolidado saldos
+-----------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS pla_consulta_seguimiento_saldos;
+
+SELECT DISTINCT
+       periodo,
+       moneda,
+       producto,
+       agencia_final,
+       grupo_periodo_venta,
+       zona,
+       situacion,
+       FORMAT(fecha_cierre,'yyyyMM') fecha_cierre,
+       SUM(saldoactual) saldoactual,
+       SUM(Tasa_x_Saldo_Actual) Tasa_x_Saldo_Actual,
+       SUM(saldo_solarizado) saldo_solarizado,
+       SUM(Tasa_x_Saldo_Solarizado) Tasa_x_Saldo_Solarizado,
+       SUM(saldo_solarizado_tc_prox_mes) saldo_solarizado_tc_prox_mes,
+       SUM(saldo_solarizado_tc_actual) saldo_solarizado_tc_actual
+INTO dbo.pla_consulta_seguimiento_saldos
+FROM pla_base_pasivos_saldo_v2
+GROUP BY
+       periodo,
+       moneda,
+       producto,
+       agencia_final,
+       grupo_periodo_venta,
+       zona,
+       situacion,
+       fecha_cierre;
+
+-----------------------------------------------------------------------------------------
+-- FUGA PLAZO
+-----------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS pla_consulta_seguimiento_fuga_plazo;
+
+SELECT
+    a.periodo,
+    b.agencia_final,
+    b.situacion,
+    b.zona,
+    FORMAT(b.fecha_cierre,'yyyyMM') fecha_cierre,
+    SUM(s_vence) vence,
+    SUM(s_cancelado) cancela,
+    SUM(s_aperturado) apertura
+
+INTO dbo.pla_consulta_seguimiento_fuga_plazo
+
+FROM pla_base_seguimiento_agencias_plazo_1 a
+
+INNER JOIN
+(
+    SELECT DISTINCT
+           codigoclientebanco,
+           agencia_final,
+           situacion,
+           zona,
+           fecha_cierre
+    FROM pla_base_pasivos_saldo_v2
+) b
+    ON a.codigoclientebanco=b.codigoclientebanco
+
+INNER JOIN maeclientes_260831 c
+    ON a.CodigoClienteBanco=c.CodigoClienteBanco
+
+WHERE a.periodo>202409
+  AND c.TipoCliente='persona natural'
+
+GROUP BY
+    a.periodo,
+    b.agencia_final,
+    b.situacion,
+    b.zona,
+    b.fecha_cierre;
+
+
+/* ============================================================
+   SQL_5 - BASE ACTIVOS
+============================================================ */
+
+
+--###################################################################################################
+--#################################    ACTIVOS     ##################################################
+--###################################################################################################
+
+IF OBJECT_ID('tempdb..#temp1_a', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE #temp1_a
+END
+
+SELECT
+    y.periodo_corte,
+    y.agencia,
+    x.periodo,
+    x.codigoclientebanco,
+    x.numerooperacion,
+    x.moneda,
+    x.producto,
+    x.subproducto,
+    x.saldoactual,
+    x.saldo_solarizado,
+    x.periodo_venta
+INTO #temp1_a
+FROM
+(
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_240930 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_241031 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_241130 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_241231 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250131 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250228 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250331 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250430 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250531 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250630 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250731 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250831 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_250930 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_251031 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_251130 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_251231 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260131 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260228 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260331 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260430 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260531 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260630 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260731 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+UNION ALL
+
+select
+    format(a.FechaCorte,'yyyyMM') periodo,
+    a.codigoclientebanco,
+    a.numerooperacion,
+    a.fechaaperturaoriginal,
+    moneda,
+    format(a.fechaaperturaoriginal,'yyyyMM') periodo_venta,
+    saldoactual,
+    saldoactual*tipocambio saldo_solarizado,
+    (
+        case
+            when producto='convenios' then 'CONVENIOS'
+            when producto='PLD PREFERENTE' then 'PLD'
+            when producto like 'hipotecario%' then 'HIPOTECARIO'
+            else NULL
+        end
+    ) producto,
+    (
+        case
+            when subproducto in ('Especiales','Hipotecarios','Ordinarios')
+                then 'Tradicional'
+            when subproducto in
+            (
+                'Individual',
+                'Mancomunado',
+                'Mi Hogar',
+                'Mi Vivienda',
+                'TECHO PROPIO'
+            )
+                then 'Mivivienda'
+            else NULL
+        end
+    ) subproducto
+from maesaldos_260831 a
+where flagstk > 0
+  and ClaseProducto='Colocaciones'
+  and (
+      producto='convenios'
+      or producto='PLD PREFERENTE'
+      or producto like 'hipotecario%'
+  )
+
+) x
+
+LEFT JOIN
+(
+    SELECT
+        '202409' periodo_corte,
+        codigoclientebanco,
+        agencia
+    FROM maeclientes_240930
+    WHERE tipocliente='persona natural'
+) y
+ON x.codigoclientebanco=y.codigoclientebanco;
+
+---------------------------------------------------------------------------------------------------------
+
+IF OBJECT_ID('tempdb..#temp2_a', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE #temp2_a
+END
+
+SELECT
+    a.*,
+
+    (
+    CASE
+      WHEN a.agencia IS NOT NULL THEN a.agencia
+
+      
+      when a.agencia is null
+       and periodo_venta='202410'
+       and format(mae1.fechainicio,'yyyyMM')<='202410'
+      then mae1.agencia
+
+      when a.agencia is null
+       and periodo_venta='202411'
+       and format(mae2.fechainicio,'yyyyMM')<='202411'
+      then mae2.agencia
+
+      when a.agencia is null
+       and periodo_venta='202412'
+       and format(mae3.fechainicio,'yyyyMM')<='202412'
+      then mae3.agencia
+
+      when a.agencia is null
+       and periodo_venta='202501'
+       and format(mae4.fechainicio,'yyyyMM')<='202501'
+      then mae4.agencia
+
+      when a.agencia is null
+       and periodo_venta='202502'
+       and format(mae5.fechainicio,'yyyyMM')<='202502'
+      then mae5.agencia
+
+      when a.agencia is null
+       and periodo_venta='202503'
+       and format(mae6.fechainicio,'yyyyMM')<='202503'
+      then mae6.agencia
+
+      when a.agencia is null
+       and periodo_venta='202504'
+       and format(mae7.fechainicio,'yyyyMM')<='202504'
+      then mae7.agencia
+
+      when a.agencia is null
+       and periodo_venta='202505'
+       and format(mae8.fechainicio,'yyyyMM')<='202505'
+      then mae8.agencia
+
+      when a.agencia is null
+       and periodo_venta='202506'
+       and format(mae9.fechainicio,'yyyyMM')<='202506'
+      then mae9.agencia
+
+      when a.agencia is null
+       and periodo_venta='202507'
+       and format(mae10.fechainicio,'yyyyMM')<='202507'
+      then mae10.agencia
+
+      when a.agencia is null
+       and periodo_venta='202508'
+       and format(mae11.fechainicio,'yyyyMM')<='202508'
+      then mae11.agencia
+
+      when a.agencia is null
+       and periodo_venta='202509'
+       and format(mae12.fechainicio,'yyyyMM')<='202509'
+      then mae12.agencia
+
+      when a.agencia is null
+       and periodo_venta='202510'
+       and format(mae13.fechainicio,'yyyyMM')<='202510'
+      then mae13.agencia
+
+      when a.agencia is null
+       and periodo_venta='202511'
+       and format(mae14.fechainicio,'yyyyMM')<='202511'
+      then mae14.agencia
+
+      when a.agencia is null
+       and periodo_venta='202512'
+       and format(mae15.fechainicio,'yyyyMM')<='202512'
+      then mae15.agencia
+
+      when a.agencia is null
+       and periodo_venta='202601'
+       and format(mae16.fechainicio,'yyyyMM')<='202601'
+      then mae16.agencia
+
+      when a.agencia is null
+       and periodo_venta='202602'
+       and format(mae17.fechainicio,'yyyyMM')<='202602'
+      then mae17.agencia
+
+      when a.agencia is null
+       and periodo_venta='202603'
+       and format(mae18.fechainicio,'yyyyMM')<='202603'
+      then mae18.agencia
+
+      when a.agencia is null
+       and periodo_venta='202604'
+       and format(mae19.fechainicio,'yyyyMM')<='202604'
+      then mae19.agencia
+
+      when a.agencia is null
+       and periodo_venta='202605'
+       and format(mae20.fechainicio,'yyyyMM')<='202605'
+      then mae20.agencia
+
+      when a.agencia is null
+       and periodo_venta='202606'
+       and format(mae21.fechainicio,'yyyyMM')<='202606'
+      then mae21.agencia
+
+      when a.agencia is null
+       and periodo_venta='202607'
+       and format(mae22.fechainicio,'yyyyMM')<='202607'
+      then mae22.agencia
+
+      when a.agencia is null
+       and periodo_venta='202608'
+       and format(mae23.fechainicio,'yyyyMM')<='202608'
+      then mae23.agencia
+
+
+      
+      when a.agencia is null
+       and format(mae23.fechainicio,'yyyyMM')<='202608'
+      then mae23.agencia
+
+
+      ELSE NULL
+    END
+    ) agencia_final,
+
+    (
+    CASE
+       WHEN b.CodigoClienteBanco IS NULL
+            THEN 'ventas_post'
+       ELSE 'stock'
+    END
+    ) grupo_periodo_venta
+
+INTO #temp2_a
+
+FROM #temp1_a a
+
+LEFT JOIN
+(
+    SELECT DISTINCT codigoclientebanco
+    FROM #temp1_a
+    WHERE periodo='202409'
+) b
+ON a.CodigoClienteBanco=b.CodigoClienteBanco
+
+
+left join maeclientes_241031 mae1
+    on a.codigoclientebanco=mae1.codigoclientebanco
+
+left join maeclientes_241130 mae2
+    on a.codigoclientebanco=mae2.codigoclientebanco
+
+left join maeclientes_241231 mae3
+    on a.codigoclientebanco=mae3.codigoclientebanco
+
+left join maeclientes_250131 mae4
+    on a.codigoclientebanco=mae4.codigoclientebanco
+
+left join maeclientes_250228 mae5
+    on a.codigoclientebanco=mae5.codigoclientebanco
+
+left join maeclientes_250331 mae6
+    on a.codigoclientebanco=mae6.codigoclientebanco
+
+left join maeclientes_250430 mae7
+    on a.codigoclientebanco=mae7.codigoclientebanco
+
+left join maeclientes_250531 mae8
+    on a.codigoclientebanco=mae8.codigoclientebanco
+
+left join maeclientes_250630 mae9
+    on a.codigoclientebanco=mae9.codigoclientebanco
+
+left join maeclientes_250731 mae10
+    on a.codigoclientebanco=mae10.codigoclientebanco
+
+left join maeclientes_250831 mae11
+    on a.codigoclientebanco=mae11.codigoclientebanco
+
+left join maeclientes_250930 mae12
+    on a.codigoclientebanco=mae12.codigoclientebanco
+
+left join maeclientes_251031 mae13
+    on a.codigoclientebanco=mae13.codigoclientebanco
+
+left join maeclientes_251130 mae14
+    on a.codigoclientebanco=mae14.codigoclientebanco
+
+left join maeclientes_251231 mae15
+    on a.codigoclientebanco=mae15.codigoclientebanco
+
+left join maeclientes_260131 mae16
+    on a.codigoclientebanco=mae16.codigoclientebanco
+
+left join maeclientes_260228 mae17
+    on a.codigoclientebanco=mae17.codigoclientebanco
+
+left join maeclientes_260331 mae18
+    on a.codigoclientebanco=mae18.codigoclientebanco
+
+left join maeclientes_260430 mae19
+    on a.codigoclientebanco=mae19.codigoclientebanco
+
+left join maeclientes_260531 mae20
+    on a.codigoclientebanco=mae20.codigoclientebanco
+
+left join maeclientes_260630 mae21
+    on a.codigoclientebanco=mae21.codigoclientebanco
+
+left join maeclientes_260731 mae22
+    on a.codigoclientebanco=mae22.codigoclientebanco
+
+left join maeclientes_260831 mae23
+    on a.codigoclientebanco=mae23.codigoclientebanco
+
+
+
+/* ============================================================
+   SQL_6 - REPORTE ACTIVOS
+============================================================ */
+
+
+-- renombramos patrimonial
+
+delete from #temp2_a
+where agencia_final is null;
+
+update #temp2_a
+set agencia_final='PATRIMONIAL'
+where agencia_final='CARTERA DEL BCO DE PICHINCHA';
+
+
+----------------------------------------------------------------------------------------------
+-- corregimos agencias cerradas
+----------------------------------------------------------------------------------------------
+
+update #temp2_a
+set agencia_final=b.Agencia
+from #temp2_a a
+inner join
+(
+    select *
+    from pla_agencias_ic
+    where periodo='202608'
+      and estado='C'
+      and canal_agencia='AGENCIAS'
+      and fecha_cierre<'2024-12-31'
+) x
+    on a.agencia_final=x.agencia
+
+inner join maeclientes_260831 b
+    on a.CodigoClienteBanco=b.CodigoClienteBanco;
+
+
+update #temp2_a
+set agencia_final='OF. PRINCIPAL'
+from #temp2_a a
+inner join
+(
+    select *
+    from pla_agencias_ic
+    where periodo='202608'
+      and estado='C'
+      and canal_agencia='AGENCIAS'
+      and fecha_cierre<'2024-12-31'
+) x
+    on a.agencia_final=x.agencia;
+
+
+------------------------------------------------------------------------------------------------
+-- identificamos CARTERA (nueva, antigua) en la base de PLD
+------------------------------------------------------------------------------------------------
+
+drop table if exists #temp_pld_refinanciado_fecha_corregida;
+
+select
+    NumeroOperacion,
+    CodigoClienteBanco,
+    FechaAperturaOriginal,
+    FlagSTK,
+    CodigoProductoIBS,
+    row_number() over
+    (
+        partition by CodigoClienteBanco
+        order by FechaAperturaOriginal desc
+    ) fila
+into #temp_pld_refinanciado_fecha_corregida
+from maesaldos_260831
+where (
+        producto in ('PLD PREFERENTE')
+        or CodigoProductoIBS in
+        (
+            'BDI1','BPD1','BPD2','BPD3','BPD4',
+            'BPE1','BPE3','BPE9','BPEA','BPED',
+            'BPH0','BPH1','BPH2','BPH6',
+            'BPR0','BPR7','BPR8','BPR9',
+            'BPRA','BPRB','BPRD','BPRE',
+            'BPRF','BPRG','BPRH','BPRI',
+            'BPRK','BPRM','BPRN','BPRS',
+            'BPRT','BPRX','BPRY',
+            'BYD1','BYDG','BYJ0','BYP1',
+            'EPL1','EPL2',
+            'PAB1','PABA','PABC','PABF',
+            'PAD1','PAD4','PADA','PADF'
+        )
+      )
+and CodigoClienteBanco is not null
+and CodigoClienteBanco in
+(
+    select distinct CodigoClienteBanco
+    from maesaldos_260831
+    where producto='PLD PREFERENTE'
+      and CodigoProductoIBS='BPRX'
+);
+
+
+drop table if exists #temp_pld_cartera;
+
+select
+    a.*,
+    (
+        case
+            when FechaAperturaOriginal_ajustado >= '2023-08-01'
+                then 'nueva'
+            else 'antigua'
+        end
+    ) cartera
+into #temp_pld_cartera
+from
+(
+    select
+        a.NumeroOperacion,
+        a.CodigoClienteBanco,
+        a.FlagSTK,
+        a.CodigoProductoIBS,
+        a.saldoactual * a.tipocambio saldo,
+        a.FechaAperturaOriginal,
+
+        (
+            case
+                when a.CodigoProductoIBS='BPRX'
+                     and b.CodigoClienteBanco is not null
+                then b.FechaAperturaOriginal
+                else a.FechaAperturaOriginal
+            end
+        ) FechaAperturaOriginal_ajustado
+
+    from maesaldos_260831 a
+
+    left join
+    (
+        select *
+        from #temp_pld_refinanciado_fecha_corregida
+        where fila=2
+    ) b
+        on a.CodigoClienteBanco=b.CodigoClienteBanco
+
+    where (
+            a.producto in ('PLD PREFERENTE')
+            or a.CodigoProductoIBS in
+            (
+                'BDI1','BPD1','BPD2','BPD3','BPD4',
+                'BPE1','BPE3','BPE9','BPEA','BPED',
+                'BPH0','BPH1','BPH2','BPH6',
+                'BPR0','BPR7','BPR8','BPR9',
+                'BPRA','BPRB','BPRD','BPRE',
+                'BPRF','BPRG','BPRH','BPRI',
+                'BPRK','BPRM','BPRN','BPRS',
+                'BPRT','BPRX','BPRY',
+                'BYD1','BYDG','BYJ0','BYP1',
+                'EPL1','EPL2',
+                'PAB1','PABA','PABC','PABF',
+                'PAD1','PAD4','PADA','PADF'
+            )
+          )
+) a;
+
+
+----------------------------------------------------------------------------------------------
+-- marcamos situación actual de la agencia
+----------------------------------------------------------------------------------------------
+
+drop table if exists dbo.pla_base_activos_saldo_v2;
+
+select
+    periodo,
+    moneda,
+    producto,
+    subproducto,
+    agencia_final,
+    grupo_periodo_venta,
+    zona,
+    situacion,
+    fecha_cierre,
+    codigoclientebanco,
+    numerooperacion,
+    saldoactual,
+    saldo_solarizado,
+    cartera
+into dbo.pla_base_activos_saldo_v2
+from
+(
+    select
+        x.*,
+        y.zona,
+        y.fecha_cierre,
+
+        (
+            case
+                when y.fecha_cierre is null then 'SE MANTIENE'
+                when y.fecha_cierre > '2025-12-31' then 'VA A CERRAR'
+                when y.fecha_cierre >= '2024-12-31'
+                     or y.fecha_cierre <= '2025-12-31'
+                     or y.categoria is null
+                    then 'CERRADA'
+                when y.fecha_cierre < '2024-12-31'
+                    then 'CERRADA ANTES'
+                else 'OTROS'
+            end
+        ) situacion,
+
+        z.cartera
+
+    from #temp2_a x
+
+    left join
+    (
+        select
+            agencia,
+            categoria,
+            zona,
+            fecha_cierre
+        from pla_agencias_ic
+        where periodo='202608'
+          and canal_agencia='AGENCIAS'
+          and zona is not null
+    ) y
+
+    on (
+        case
+            when x.agencia_final='AG. CARSA PUCALLPA'
+                then 'AG. PUCALLPA'
+            when x.agencia_final='AG. CARSA JAEN'
+                then 'AG. JAEN'
+            else x.agencia_final
+        end
+    ) = y.agencia
+
+    left join #temp_pld_cartera z
+        on x.numerooperacion=z.numerooperacion
+
+) w;
+
+
+-----------------------------------------------------------------------------------------
+-- zona de patrimonial y principal
+-----------------------------------------------------------------------------------------
+
+update pla_base_activos_saldo_v2
+set zona='PATRIMONIAL Y OTROS'
+where agencia_final in
+(
+    'OF. PRINCIPAL',
+    'PATRIMONIAL',
+    'FIDEICOMISO II',
+    'FIDEICOMISO AG 402 PE$',
+    'AGENCIA BASADRE'
+);
+
+
+delete from pla_base_activos_saldo_v2
+where situacion='otros';
+
+
+-------------------------------------------------------------------------------------------
+-- consulta consolidada SALDOS
+-------------------------------------------------------------------------------------------
+
+IF OBJECT_ID('dbo.pla_consulta_seguimiento_saldos_activos', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE dbo.pla_consulta_seguimiento_saldos_activos
+END
+
+select
+    periodo,
+    moneda,
+    producto,
+    subproducto,
+    agencia_final,
+    grupo_periodo_venta,
+    zona,
+    situacion,
+    cartera,
+    format(fecha_cierre,'yyyyMM') fecha_cierre,
+    count(distinct CodigoClienteBanco) clientes,
+    sum(saldoactual) saldoactual,
+    sum(saldo_solarizado) saldo_solarizado
+into dbo.pla_consulta_seguimiento_saldos_activos
+from pla_base_activos_saldo_v2
+group by
+    periodo,
+    moneda,
+    producto,
+    subproducto,
+    agencia_final,
+    grupo_periodo_venta,
+    zona,
+    situacion,
+    cartera,
+    fecha_cierre;
+
+
+/* ============================================================
+   SQL_7 - CALIDAD DE CARTERA
+============================================================ */
+
+
+DROP TABLE IF EXISTS dbo.pla_consulta_seguimiento_saldos_activos_calidad_cartera;
+
+SELECT *
+INTO dbo.pla_consulta_seguimiento_saldos_activos_calidad_cartera
+FROM
+(
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202409','202410')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202410'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202410','202411')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202411'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202411','202412')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202412'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202412','202501')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202501'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202501','202502')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202502'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202502','202503')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202503'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202503','202504')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202504'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202504','202505')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202505'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202505','202506')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202506'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202506','202507')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202507'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202507','202508')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202508'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202508','202509')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202509'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202509','202510')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202510'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202510','202511')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202511'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202511','202512')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202512'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202512','202601')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202601'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202601','202602')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202602'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202602','202603')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202603'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202603','202604')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202604'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202604','202605')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202605'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202605','202606')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202606'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202606','202607')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202607'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Gasto' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.gasto valor1,
+    1 valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo in ('202607','202608')
+) a
+inner join
+(
+    select *
+    from resumen_base
+    where periodo='202608'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+
+UNION ALL
+
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202410'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202410'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202411'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202411'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202412'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202412'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202501'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202501'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202502'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202502'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202503'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202503'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202504'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202504'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202505'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202505'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202506'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202506'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202507'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202507'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202508'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202508'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202509'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202509'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202510'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202510'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202511'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202511'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202512'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202512'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202601'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202601'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202602'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202602'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202603'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202603'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202604'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202604'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202605'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202605'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202606'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202606'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202607'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202607'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'Mora' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202608'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (deuda_vencida+Deuda_Judicial) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202608'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+
+UNION ALL
+
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202410'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202410'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202411'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202411'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202412'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202412'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202501'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202501'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202502'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202502'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202503'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202503'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202504'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202504'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202505'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202505'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202506'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202506'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202507'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202507'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202508'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202508'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202509'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202509'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202510'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202510'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202511'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202511'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202512'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202512'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202601'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202601'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202602'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202602'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202603'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202603'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202604'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202604'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202605'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202605'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202606'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202606'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202607'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202607'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+UNION ALL
+
+select
+    b.periodo,
+    'CAR' medicion,
+    a.agencia_final,
+    a.situacion,
+    a.zona,
+    format(a.fecha_cierre,'yyyyMM') fecha_cierre,
+    a.CodigoClienteBanco,
+    b.banca,
+    b.saldo_mora valor1,
+    b.Deuda_Total valor2
+from
+(
+    select distinct
+        codigoclientebanco,
+        agencia_final,
+        situacion,
+        zona,
+        fecha_cierre,
+        producto,
+        subproducto
+    from pla_base_activos_saldo_v2
+    where periodo='202608'
+) a
+inner join
+(
+    select
+        periodo,
+        banca,
+        cliente,
+        (
+            deuda_vencida +
+            Deuda_Judicial +
+            Deuda_Refinanciada
+        ) saldo_mora,
+        Deuda_Total
+    from resumen_base
+    where periodo='202608'
+      and banca in ('3. Convenios','6. PLD','9. Hipotecario')
+) b
+    on a.codigoclientebanco=b.cliente
+   and a.producto=substring(b.banca,4,100)
+
+
+) X;
+
+------------------------------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS dbo.pla_consulta_seguimiento_saldos_activos_calidad_cartera_reporte;
+
+SELECT
+    periodo,
+    medicion,
+    agencia_final,
+    situacion,
+    zona,
+    fecha_cierre,
+    banca,
+    SUM(valor1) valor1,
+    SUM(valor2) valor2
+INTO dbo.pla_consulta_seguimiento_saldos_activos_calidad_cartera_reporte
+FROM pla_consulta_seguimiento_saldos_activos_calidad_cartera
+GROUP BY
+    periodo,
+    medicion,
+    agencia_final,
+    situacion,
+    zona,
+    fecha_cierre,
+    banca;
+
+
+/* ============================================================
+   FIN DEL PROCESO
+============================================================ */
